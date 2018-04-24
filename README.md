@@ -1,5 +1,5 @@
 # Exploratory Data Analysis with Yelp in R
-<img src="yelp.png">
+<img src="yelp.png" width="400" height="240">
 
 ### Why Yelp?
 
