@@ -12,12 +12,12 @@ There are five documents in that dataset: business.JSON, checkin.JSON, review.Js
 **Read JSON Data Files**
 
 These JSON files are actually called ‘NDJSON (Newline delimited JSON)’, which means there are multiple JSON values inside this file and each of the JSON values is considered as an independent object. Therefore, we need to use **stream_in()** function to read data into R.
-
 Command: **business <- stream_in(file("business.json"))**
 
 JSON data is nested and hierarchical so it is a bit confusing for analyzing data in R. I used **flatten()** to eliminate the structure.
 
 **Data Cleaning and Storing**
+
 Since I only focused on restaurant and food part, I removed unnecessary observations and saved them into CSV files. Detailed process shows in R file.
 
 ### Part 2: Data Analysis
