@@ -1,0 +1,592 @@
+---
+title: "Yelp Data Analysis"
+subtitle: "Data Wrangling Project"
+author: "Wanting Tan"
+date: "April 27, 2018"
+output: 
+  html_document:
+        toc: true
+        toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+&nbsp;
+&nbsp;
+&nbsp;
+&nbsp;
+
+## 1. Introduction
+
+Yelp Dataset Challenge is a gread exercise for us to do interesting data exploration and practice what we have learned in the class. Data wrangling is such an important work that always requires most of the time of data analysis. Therefore, it worth our time to deep dive.
+
+In this project, I used two **yelp datasets** (Business.csv and Reviews.csv) and **geocode data** from google map. For restaurant rating data, I plotted distribution of ratings, provided average ratings by state and spotted where most 5-star restaurants are located. For the last part, I built a leaflet plot, which shows the distribution clearly.
+
+For customer reviews, I focused on **sentiment analysis** for both the restaurant who has the most 5-star reviews and the one who has the most 1-star reviews. I extracted top ten most common words in reviews and analyzed negative reviews and positive reviews of each specific restaurant.
+
+For the final part, I made a conclusion and some interesting findings. This project really helps me to combine all the tools I learned together and put into practice. Nice training!
+ 
+&nbsp;
+&nbsp;
+&nbsp;
+&nbsp;
+
+## 2. Preparation
+
+### 2.1 Load Libraries
+
+```{r message=F,warning=F}
+library(jsonlite)
+library(textcat)
+library(dplyr)
+library(tidyverse)
+library(extrafont)
+library(ggplot2)
+library(leaflet)
+library(ggmap)
+library(pander)
+library(knitr)
+library(tidytext)
+library(wordcloud)
+library(textcat)
+library(googleway)
+library(DT)
+```
+&nbsp;
+
+### 2.2 Clean The Data
+
+The dataset comes from Yelp Dataset Challenge Website:https://www.yelp.com/dataset/challenge. I downloaded **JSON file** for my analysis. This dataset contains information about the businesses listed on Yelp for selected states and provinces in the US and Europe.
+
+Here is my code to read JSON file in R:
+```{r raw data, eval=F}
+business <- stream_in(file("business.json"))
+reviews <- stream_in(file("reviews.json"))
+```
+After reading JSON data, I used flatten() to eliminate the structure, converting them to data frame and saved as "yelp_review.csv" and "yelp_business.csv".
+
+```{r, eval=F}
+reviews<-read.csv("yelp_review.csv")
+business<-read.csv("yelp_business.csv")
+
+#only consider restaurants and food field
+restaurants <- business[grepl('Restaurant|restaurant|food|Food', business$categories),]
+nrow(restaurants) #69079
+write.csv(restaurants,file="restaurants.csv")
+
+#cleaning up Reviews Data to filter only Restaurant Data
+reviews_food<-reviews %>% filter(business_id %in% restaurants$business_id)
+nrow(reviews_food) #3540258
+write.csv(reviews_food,file="reviews_food.csv")
+```
+I want to focus only on restaurants and food, so I removed unnecessary observations by using regular expression. Then, I saved them in csv files and those are clean datasets I'm going to use for my data analysis. There are in total 69079 restaurants business data and 3540258 customer reviews for these restaurants.
+
+Here are two previews for my clean data:
+&nbsp;
+
+##### **Business Data for Restaurants**
+```{r echo=F,message=F,warning=F}
+restaurants <- read.csv("restaurants.csv")
+datatable(as.data.frame(restaurants[1:3,]),style="bootstrap",class="table-condensed",options=list(dom="tp",scrollX=TRUE))
+```
+
+&nbsp;
+&nbsp;
+
+##### **Reviews Data for Restaurants**
+```{r echo=F}
+reviews_food <- read.csv("reviews_food.csv")
+glimpse(reviews_food)
+```
+
+&nbsp;
+&nbsp;
+&nbsp;
+&nbsp;
+
+## 3. Rating Data Analysis
+### 3.1 Distribution of Ratings
+The following plot shows the distribution of ratings by users. We can see the bar plot shows a roughly increasing trend. There are a lot more 4 and 5 star ratings than 1,2 and 3. We could say people tend to review things they like. That means people seems to me more likely to write positive feelings rather than a negative one.
+
+The fact that 1 star ratings are more than 2 star ratings surprised me a little bit. I guess that people tend to express their anger if they had a very bad experience.
+
+&nbsp;
+```{r Distribution of Ratings,echo=F}
+#1.Distribution of Ratings
+rating_ditribution <- reviews_food %>% group_by(stars) %>% count()
+rating_plot<-rating_ditribution %>%
+  ggplot(aes(x=cut(stars,c(0,1,2,3,4,5)),y=n,fill=cut(stars,c(0,1,2,3,4,5)))) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette="OrRd") +
+  scale_x_discrete(labels=c("1.0","2.0","3.0","4.0","5.0")) +
+  labs(y="Count of Users", x="Star Category") +
+  ggtitle("Distribution of Ratings") +
+  theme(plot.title=element_text(hjust=0.5),legend.position = "none")
+rating_plot
+```
+
+&nbsp;
+&nbsp;
+
+### 3.2 Average review ratings grouped by state
+
+I want to know which state tends to give higher ratings so I made the following table to show the average review ratings of each state. State here contains not only states in the United States but also states in Canada and Europe. "total business" is the total number of restaurants in a specific state. "ave_rating" is the mean of ratings of all these restaurants. I arranged total business in decreasing order and showed only first 10 rows of the table.
+
+I didn't sort the table by average rating because if I did that it would shown many states with very high average ratings but only 1 total number of restaurant, which is meaningless.
+```{r Average review ratings grouped by state,echo=F,warning=F}
+#2.Average review ratings by State
+RateByState<-restaurants %>% 
+  group_by(state) %>%
+  summarise(total_business=n(),avg_rating=mean(stars)) %>%
+  arrange(desc(total_business)) %>% head(10)
+
+panderOptions("digits",3)
+pander(RateByState)
+```
+
+This is the bar plot of table above. I sorted the ratings in the table in decreasing order. According to the plot, El Dorado Hills(EDH) in the US, Baden-Württemberg(BW) in German and Quebec(QC) in Canada have highest scores. Although Ontaria(ON) has the highest number of restaurants, it has relatively lower ratings. 
+
+```{r,echo=F}
+RateByState %>% filter(total_business>1000) %>%
+  arrange(desc(avg_rating)) %>%
+  mutate(state = factor(state, levels=rev(state))) %>%
+  ggplot(aes(state, avg_rating)) + 
+  geom_bar(stat="identity") + 
+  coord_flip() + 
+  geom_text(aes(label=round(avg_rating, 2)), hjust=2, color="white") +
+  labs(y="Average Star Rating by State", x="State") +
+  ggtitle("Average Yelp Review Star Ratings by State") +
+  theme(plot.title=element_text(hjust=0.5),legend.position = "none")
+
+```
+
+&nbsp;
+&nbsp;
+&nbsp;
+
+### 3.3 Where are most 5-star restaurants located?
+
+Wherever I go, I always try to find 5-star restaurants nearby so that I won't waste my time and money. So for this part, I want to find where most 5-star restaurants are located. The first step is to find 5-star restaurants. The following table is top ten 5-star restaurants ordered by the number of reviews.
+```{r,echo=F}
+#top 10 5-star restaurants
+top_restaurants<-restaurants %>%
+  filter(stars=="5") %>%
+  select(name, city, state, review_count,stars) %>%
+  arrange(desc(review_count))
+kable(top_restaurants[1:10,])
+```
+&nbsp;
+&nbsp;
+&nbsp;
+
+After knowing the name and address of these restaurants, we need to find out the longitude and latitude of these places.  I tried to use **geocode** function but it can't read all the places I selected. Therefore, I asked for an api key from google map website so that I can use **googleway** package to get location. Below is my leaflet plot. 
+
+When you click the marker in the plot, it will show the city name and the number of 5-star restaurant in that city. When you shrink the plot, you will see there are some makers in the Europe. We can see that 5 star restaurants are mainly located in east coast and west coast of United States. It is reasonable because the population in these two areas are higher than other areas. So, the corresponding number of restaurant should be higher.
+&nbsp;
+
+```{r,echo=F}
+#where these most 5-star restaurants located in the United States?
+RateByCity<-top_restaurants %>%
+  group_by(city,state) %>%
+  summarise(count=n()) %>%
+  arrange(desc(count)) %>% head(50)
+
+source("C:/Users/wt171/Desktop/api-key.R")
+key=api.key
+
+RateByCity$city<-as.character(RateByCity$city)
+RateByCity$state<-as.character(RateByCity$state)
+RateByCity$city[4] <- "Montreal"
+if(nrow(RateByCity)>=69){
+RateByCity$city[69] <- "Boblingen"}
+RateByCity$place<-paste(RateByCity$city,RateByCity$state,sep=", ")
+
+RateByCity$longitude <- rep(0,length(RateByCity$city))
+RateByCity$latitude <- rep(0,length(RateByCity$city))
+for(i in 1:length(RateByCity$place)){
+    long_lat<-google_geocode(RateByCity$place[i],key = key)
+    RateByCity$longitude[i] <- long_lat$results$geometry$location[[2]]
+    RateByCity$latitude[i] <- long_lat$results$geometry$location[[1]]
+}
+
+
+leaflet(RateByCity) %>% addTiles() %>%
+  setView(lng=-96.503906,lat=38.68551,zoom=4) %>%
+  addMarkers(lng=~longitude,lat=~latitude,popup=paste("<b>City Name:</b> ", as.character(RateByCity$city), "<br>", "<b>Number of 5-star Restaurant:<b>",as.character(RateByCity$count),"<br>"))
+
+```
+
+&nbsp;
+&nbsp;
+&nbsp;
+&nbsp;
+&nbsp;
+
+## 4. Review Data Analysis
+
+For the review part, I choose to do sentiment analysis. I selected the restaurant that has most 5 star reviews and the restaurant that has most 1 star reviews as my objects and did positive review analysis and negative review analysis respectively. I expect that my result would show why popular restaurant is popular and how the worse one can improve.
+
+### 4.1 Sentiment Analysis for the restaurant has most 5 star reviews
+
+&nbsp;
+
+#### 4.1.1Find the restaurant has most 5 star reviews
+```{r, warning=F, message=F,echo=F}
+most5StarsReviews = reviews_food%>%
+  filter(stars == 5) %>%
+  group_by(business_id) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  ungroup() %>%
+  mutate(BusinessID = reorder(business_id,count)) %>%
+  head(10)
+
+most5StarsReviews = inner_join(most5StarsReviews,restaurants)  %>%
+  select(name, city, state, count)
+kable(most5StarsReviews[1:10,])
+```
+
+The table above shows the top 10 restaurants that have most 5-star reviews. "name" is the name of restaurant."city" "state" is the place the restaurant located in. "count" is the number of 5 star reviews. We can see the first 10 restaurants all come from Las Vegas. It is partly because in the original dataset, Las Vegas has the most business parties in Yelp. 
+
+I also plotted bar plot for this table. I prefer the bar plot because it shows information more clearly and straightforward. We can easily notice that "Mon Ami Gabi" in Las Vegas has the most 5 star reviews-3280 reviews. Therefore, I chose "Mon Ami Gabi" as my object for positive review analysis.
+
+```{r,echo=F}
+most5StarsReviews %>%
+  mutate(name = reorder(name,count)) %>%
+  ggplot(aes(x = name,y = count)) +
+  geom_bar(stat='identity',colour="white",fill = "#FF6666") +
+  geom_text(aes(x = name, y = count, label = paste0(count,sep="")),
+            hjust=2, vjust=.5, size = 3, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'Name of the Business', 
+       y = 'Count') +
+  ggtitle("Name of the Business and Count") +
+  theme(plot.title=element_text(hjust=0.5),legend.position = "none") +
+  coord_flip() +
+  theme_bw()
+```
+
+&nbsp;
+&nbsp;
+&nbsp;
+
+#### 4.1.2 Top Ten Most Common Words of "Mon Ami Gabi"
+
+```{r include=F}
+###most common words
+###convert factors to characters
+reviews_food$text<-as.character(reviews_food$text)
+reviews_food$review_id<-as.character(reviews_food$review_id)
+reviews_food$user_id<-as.character(reviews_food$user_id)
+reviews_food$business_id<-as.character(reviews_food$business_id)
+reviews_food$date<-as.Date(reviews_food$date)
+
+```
+
+First, I calculated top ten most commen words in reviews. Below is the summary bar plot.
+```{r,echo=F}
+Mon<-reviews_food %>%
+  filter(business_id == "4JNXUYY8wbaaDmk3BPzlWw") %>%
+  unnest_tokens(word, text) %>%
+  filter(!word %in% stop_words$word) %>%
+  filter(!word %in% c('food','restaurant','las','vegas')) %>%
+  count(word,sort = TRUE) %>%
+  ungroup() %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  head(10)
+
+Mon %>% ggplot(aes(x = word,y = n)) +
+  geom_bar(stat='identity',colour="white", fill ="#FF6666") +
+  geom_text(aes(x = word, y = n, label = paste0(n,sep="")),
+            hjust=2, vjust=.5, size = 3, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'Word', y = 'Word Count') +
+  ggtitle("Most Commen Word") +
+  theme(plot.title=element_text(hjust=0.5),legend.position = "none")+
+  coord_flip() + 
+  theme_bw()
+```
+
+From the plot above, we can see that some positive words shows very frequently in reviews such as "delicious" "nice". This is not surprising because "Mon Ami Gabi" has most good reviews. However, with only one word we can hardly get information from nouns such as "steak", "service", "french". Therefore, it's time for Bigram to show up!
+
+```{r,echo=F}
+### Bigram
+Mon_bigram<-reviews_food %>%
+  filter(business_id == "4JNXUYY8wbaaDmk3BPzlWw") %>%
+  unnest_tokens(bigram, text,token="ngrams",n=2) %>%
+  separate(bigram,c("word1","word2"),sep=" ") %>%
+  filter(!word1 %in% c(stop_words$word,"mon","ami","gabi","las","vegas")) %>%
+  filter(!word2 %in% c(stop_words$word,"mon","ami","gabi","las","vegas")) %>%
+  count(word1,word2,sort = TRUE) %>%
+  ungroup() %>%
+  mutate(word = factor(paste(word1,word2,sep=" "), levels = rev(unique(paste(word1,word2,sep=" "))))) %>%
+  head(10)
+
+Mon_bigram %>% ggplot(aes(x =word,y = n)) +
+  geom_bar(stat='identity',colour="white", fill ="#FF6666") +
+  geom_text(aes(x = word, y = n, label = paste0(n,sep="")),
+            hjust=2, vjust=.5, size = 3, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'Word', y = 'Word Count', 
+       title = 'Word Count') +
+  coord_flip() + 
+  theme_bw()
+```
+
+Bigram plot can give us more information about this restaurant. Onion soup and Bellagio fountains might be the biggest characteristics of "Mon Ami Gabi". I could also know some delicious dishes from these reviews such as Steak frites, French Onion, Eggs benedict, Filet mignon.
+
+I made a word cloud as well just for fun. The height of each word in this picture shows the frequency of occurrence of the word in the entire text. The words steak, service, french, delicious are the popular words in the reviews, which is correspondent to the bar plot of common words.
+```{r echo=F}
+createWordCloud <- function(train)
+{
+  train %>%
+    unnest_tokens(word, text) %>%
+    filter(!word %in% stop_words$word) %>%
+    filter(!word %in% c('food','restaurant')) %>%
+    count(word,sort = TRUE) %>%
+    ungroup()  %>%
+    head(30) %>%
+    
+    with(wordcloud(word, n, max.words = 30,colors=brewer.pal(8, "Dark2")))
+}
+
+createWordCloud(reviews_food %>%
+                  filter(business_id == "4JNXUYY8wbaaDmk3BPzlWw"))
+
+```
+&nbsp;
+
+#### 4.1.3 Sentiment Analysis for "Mon Ami Gabi"
+
+First, I used AFINN sentiment lexicon to provide numeric scores for each word and displayed them in following table.
+```{r,echo=F}
+contribution <- function(SC) {
+  contributions <- SC %>%
+    unnest_tokens(word, text) %>%
+    count(word,sort = TRUE) %>%
+    ungroup() %>%
+    
+    inner_join(get_sentiments("afinn"), by = "word") %>%
+    group_by(word) %>%
+    summarize(occurences = n(), contribution = sum(score))
+  
+  con_table<-contributions %>%
+    top_n(20, abs(contribution)) %>%
+    mutate(word = reorder(word, contribution)) %>%
+    head(8) 
+  
+  pander(con_table)
+}
+
+contribution(reviews_food %>% filter(business_id == "4JNXUYY8wbaaDmk3BPzlWw"))
+```
+
+Second, I calculated sentiment scores for all the reviews using AFINN sentiment lexicon. The following table shows first 5 of them. "words" is the number of contributed words in a given review. "sentiment" is the average score of thoes words.
+
+```{r,echo=F}
+### Calculate sentiment for the reviews
+calculate_sentiment <- function(review_text)
+{
+  sentiment_lines  =  review_text %>%
+    filter(textcat(text) == "english") %>%  # considering only English text
+    unnest_tokens(word, text) %>%
+    inner_join(get_sentiments("afinn"), by = "word") %>%
+    group_by(review_id) %>%
+    summarize(sentiment = mean(score),words = n()) %>%
+    ungroup() %>%
+    filter(words >= 5) 
+  
+  return(sentiment_lines)
+}
+
+sentiment_lines = calculate_sentiment(reviews_food %>% filter(business_id == "4JNXUYY8wbaaDmk3BPzlWw"))
+pander(sentiment_lines[1:5,])
+```
+&nbsp;
+&nbsp;
+
+#### 4.1.4 positive review analysis
+Then, I extracted top five most positive reviews. After examing them, I noticed that although these reviews were written in different years, nearly all of the reviews mentioned good service, nice decoration and atmosphere. They also point out their favorite food: onion soup, steak, pudding and etc.
+
+These information shows advantages of "Mon Ami Gabi" that are attractive to customers and should be kept in the future. 
+
+&nbsp;
+&nbsp;
+
+```{r,echo=F}
+### Positive reviews
+display_pos_sentiments <- function(sentiment_lines,review_text)
+{
+  pos_sentiment_lines = sentiment_lines %>%
+    arrange(desc(sentiment))  %>%
+    top_n(10, sentiment) %>%
+    inner_join(review_text, by = "review_id") %>%
+    select(date,sentiment,text) 
+  
+  datatable(as.data.frame(pos_sentiment_lines[1:3,]))
+}
+
+display_pos_sentiments(sentiment_lines,reviews_food %>% filter(business_id == "4JNXUYY8wbaaDmk3BPzlWw"))
+```
+&nbsp;
+&nbsp;
+&nbsp;
+&nbsp;
+
+
+### 4.2 Sentiment Analysis for the restaurant has most 1 star reviews
+
+For this part, I want to see the opposite side--find the least popular restaurant. I revised my previous code a little bit and got following table and plot. The place that has most 1 star reviews is "MGM Grand Hotel". However, when I did sentiment analysis for this hotel, I found most reviews focused on hotel facilities rather than food. That's not what I want to study so I changed my object the second one--"Bacchanal Buffet"
+
+```{r echo=F, message=F, warning=F}
+most1StarsReviews = reviews_food%>%
+  filter(stars == 1) %>%
+  group_by(business_id) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  ungroup() %>%
+  mutate(BusinessID = reorder(business_id,Count)) %>%
+  head(10)
+
+most1StarsReviews = inner_join(most1StarsReviews,restaurants)  %>%
+  select(name, city, state, Count)
+kable(most1StarsReviews[1:10,]) 
+
+
+most1StarsReviews %>%
+  mutate(name = reorder(name,Count)) %>%
+  ggplot(aes(x = name,y = Count)) +
+  geom_bar(stat='identity',colour="white",fill = "#FF6666") +
+  geom_text(aes(x = name, y = Count, label = paste0(Count,sep="")),
+            hjust=2, vjust=.5, size = 3, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'Name of the Business', 
+       y = 'Count') +
+  ggtitle("Name of the Business and Count") +
+  theme(plot.title=element_text(hjust=0.5),legend.position = "none") +
+  coord_flip() +
+  theme_bw()
+```
+
+&nbsp;
+&nbsp;
+&nbsp;
+
+#### 4.2.1 Top Ten Most Common Words of "Bacchanal Buffet"
+
+Similar to what we have done to"Mon Ami Gabi". I directly calculate the bigram. From the plot below, we notice that crab legs has a very high appearance frequency. It must be a special dish in this restaurant. Then followed by prime rib, dim sum, king crab, etc. I guess that it might be a seafood restaurant.
+
+```{r echo=F}
+### Bigram
+Mon_bigram<-reviews_food %>%
+  filter(business_id == "RESDUcs7fIiihp38-d6_6g") %>%
+  unnest_tokens(bigram, text,token="ngrams",n=2) %>%
+  separate(bigram,c("word1","word2"),sep=" ") %>%
+  filter(!word1 %in% c(stop_words$word,"bacchanal","buffet","las","vegas")) %>%
+  filter(!word2 %in% c(stop_words$word,"bacchanal","buffet","las","vegas")) %>%
+  count(word1,word2,sort = TRUE) %>%
+  ungroup() %>%
+  mutate(word = factor(paste(word1,word2,sep=" "), levels = rev(unique(paste(word1,word2,sep=" "))))) %>%
+  head(10)
+
+Mon_bigram %>% ggplot(aes(x =word,y = n)) +
+  geom_bar(stat='identity',colour="white", fill ="#FF6666") +
+  geom_text(aes(x = word, y = n, label = paste0(n,sep="")),
+            hjust=2, vjust=.5, size = 3, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'Word', y = 'Word Count', 
+       title = 'Word Count') +
+  coord_flip() + 
+  theme_bw()
+```
+
+&nbsp;
+&nbsp;
+&nbsp;
+
+#### 4.2.2 Sentiment Analysis for "Bacchanal Buffet"
+
+Same as before, I used AFINN sentiment lexicon to provide numeric scores for each word and displayed them in following table.
+
+```{r echo=F}
+##sentiment analysis
+contribution(reviews_food %>% filter(business_id == "RESDUcs7fIiihp38-d6_6g"))
+```
+
+Then, I calculated sentiment scores for all the reviews using AFINN sentiment lexicon. The second table shows first 5 of them. "words" is the number of contributed words in a given review. "sentiment" is the average score of thoes words.
+
+```{r echo=F,error=F}
+### Calculate sentiment for the reviews
+sentiment_lines = calculate_sentiment(reviews_food %>%
+                                        filter(business_id == "RESDUcs7fIiihp38-d6_6g"))
+pander(sentiment_lines[1:5,])
+```
+&nbsp;
+&nbsp;
+
+#### 4.2.3 Negative review analysis
+
+Then, I extracted top five most negative reviews. After examing them, I noticed that nearly all of the reviews complained about the long waiting time and expensive fee. What really surprised me is that this bad situation didn't change at all from 2014 to 2017 even though the restaurant created "Express Lane". Many reviews pointed out directly the unreasonable system and management. For example: some customer payed extra $25 for Express Lane only to find it moves even more slowly than Regular Lane, which would definitely annoy customers.  
+
+These information shows drawbacks of "Bacchanal Buffet" that should be improved in the future.
+
+```{r echo=F}
+### Negative reviews
+display_neg_sentiments <- function(sentiment_lines,review_text)
+{
+  neg_sentiment_lines = sentiment_lines %>%
+    arrange(desc(sentiment))  %>%
+    top_n(-10, sentiment) %>%
+    inner_join(review_text, by = "review_id") %>%
+    select(date,sentiment,text) 
+  datatable(as.data.frame(neg_sentiment_lines[1:3,]))
+  }
+
+display_neg_sentiments(sentiment_lines,reviews_food %>%
+                         filter(business_id == "RESDUcs7fIiihp38-d6_6g"))
+```
+
+&nbsp;
+&nbsp;
+
+Besides, I found that although many people gave only 1 star reviews, there were not many complaints about the food. On the contrary, I find many good reviews about the food there. 
+
+The following table is several positive reviews of "Bacchanal Buffet". They all mentioned delicious food there. Therefore, I think this restaurant has the potential to be popular since there are still many people that are willing to wait for it as long as they can improve the waiting system.
+
+
+&nbsp;
+&nbsp;
+
+```{r echo=F}
+### Positive reviews
+ display_pos_sentiments(sentiment_lines,reviews_food %>%
+filter(business_id == "RESDUcs7fIiihp38-d6_6g"))
+
+```
+
+## 5. Conclusion and Findings
+
+In this project, I mainly focused on rating data analysis and review data analysis. For rating part, I did rating distribution plot, grouped average ratings by state and built a leaflet plot to show the location of most 5-star restaurants. 
+
+
+Here's some interesting findings for this part:
+
+ - People tend to write a review for a positive experience than a negative one.
+ 
+ - El Dorado Hills(EDH) in the US, Baden-Württemberg(BW) in German and Quebec(QC) in Canada have highest rating scores. Probably they are the right places to find most delicious food.
+ 
+ - Most 5-star restaurants in the US are located in North East America and South West America at least for this dataset. Las Vegas has the most business parties in Yelp.
+
+
+For review data analysis, I chose to do sentiment analysis because it can point out a direction for business owners to find out which aspect of the business they need to improve and which part needs to keep. I chose two specific restaurants--"Mon Ami Gabi" and "Bacchanal Buffet" as my objects and did detailed sentiment analysis to them.
+
+Here's the summary of funny results:
+&nbsp;
+
+* "Mon Ami Gabi" has most 5-star reviews partly because of its constantly good service, nice atmosphere and delicious food.
+
+* "Bacchanal Buffet" has most 1-star reviews maybe because of its terrible waiting system and management. However, reviews shows that it has the potential to be popular because many people are still willing to wait for the food as long as waiting time is less.
+
+That all my data wrangling project. Thanks for your reading.
+
