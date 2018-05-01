@@ -1,11 +1,12 @@
 # Exploratory Data Analysis with Yelp in R
-<img src="yelp.png" width="400" height="240">
+<img src="yelp.png" width="450" height="200">
 
 ### Why Yelp?
 
 Becuase of Yelp Dataset Chanllenge!! This dataset (https://www.yelp.com/dataset/challenge) is plublicly available as part of the Yelp Dataset Challenge. This set includes information about local businesses in 11 metropolitan areas across 4 countries. 
 
 There are five documents in that dataset: business.JSON, checkin.JSON, review.Json, tip.JSON, user.JSON. Because of large volume of data and limitation of my computer, I only used two of them: business and review.
+
 
 ### Part 1: Data Collection and Processing
 
@@ -20,6 +21,7 @@ JSON data is nested and hierarchical so it is a bit confusing for analyzing data
 
 Since I only focused on restaurant and food part, I removed unnecessary observations and saved them into CSV files. Detailed process shows in R file.
 
+
 ### Part 2: Data Analysis
 
 **Analysis about Restaurant Ratings**
@@ -27,14 +29,15 @@ Since I only focused on restaurant and food part, I removed unnecessary observat
 * What's the distribution of ratings?
 * What is average ratings by state?
 * What are the top 10 highest ratings restaurants and where are they located?
-* What's the relationship between ratings and price range?
 
 **Analysis about User Reviews**
 
 * Which restaurants have most 5-star reviews and which have most 1-star reviews from users?
-* What are the top 10 most common words appeared in the reviews of "Mon Ami Gabi"?
-* Sentiment Analysis
+* What are the top 10 most common words appeared in their reviews?
+* Positive Sentiment Analysis: why "Mon Ami Gabi" is popular?
+* Negative Sentiment Analysis: what should "Bacchnal Buffet" improve?
+
 
 ### Part 3: Conclusions
-Findings
+Conclusion and Interesting Findings
 
