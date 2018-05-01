@@ -59,12 +59,13 @@ library(DT)
 
 The dataset comes from Yelp Dataset Challenge Website:https://www.yelp.com/dataset/challenge. I downloaded **JSON file** for my analysis. This dataset contains information about the businesses listed on Yelp for selected states and provinces in the US and Europe.
 
+I tried to use **fromJSON()** from "jsonlite" package to import the data but failed. That is because this JSON file turned out to be Newline Delimited JSON, which means there are multiple JSON values inside this file and each of the JSON values is considered as an independent object. "fromJSON" cannot deal with this streaming situation. However, "jsonlite" has another function called "stream_in", which can help solve this.
 Here is my code to read JSON file in R:
 ```{r raw data, eval=F}
 business <- stream_in(file("business.json"))
 reviews <- stream_in(file("reviews.json"))
 ```
-After reading JSON data, I used flatten() to eliminate the structure, converting them to data frame and saved as "yelp_review.csv" and "yelp_business.csv".
+After reading JSON data, I checked the JSON data structure, which is a bit confusing for analyzing data in R. Therefore, I used flatten() to eliminate the structure, converting them to data frame and saved as "yelp_review.csv" and "yelp_business.csv".
 
 ```{r, eval=F}
 reviews<-read.csv("yelp_review.csv")
@@ -145,7 +146,7 @@ panderOptions("digits",3)
 pander(RateByState)
 ```
 
-This is the bar plot of table above. I sorted the ratings in the table in decreasing order. According to the plot, El Dorado Hills(EDH) in the US, Baden-Württemberg(BW) in German and Quebec(QC) in Canada have highest scores. Although Ontaria(ON) has the highest number of restaurants, it has relatively lower ratings. 
+This is the bar plot of table above. I sorted the ratings in the table in decreasing order. According to the plot, El Dorado Hills(EDH) in the US, Baden-W?rttemberg(BW) in German and Quebec(QC) in Canada have highest scores. Although Ontaria(ON) has the highest number of restaurants, it has relatively lower ratings. 
 
 ```{r,echo=F}
 RateByState %>% filter(total_business>1000) %>%
@@ -574,7 +575,7 @@ Here's some interesting findings for this part:
 
  - People tend to write a review for a positive experience than a negative one.
  
- - El Dorado Hills(EDH) in the US, Baden-Württemberg(BW) in German and Quebec(QC) in Canada have highest rating scores. Probably they are the right places to find most delicious food.
+ - El Dorado Hills(EDH) in the US, Baden-W?rttemberg(BW) in German and Quebec(QC) in Canada have highest rating scores. Probably they are the right places to find most delicious food.
  
  - Most 5-star restaurants in the US are located in North East America and South West America at least for this dataset. Las Vegas has the most business parties in Yelp.
 
